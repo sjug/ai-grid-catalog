@@ -1,0 +1,26 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../models/vcr-smollm2/deployment
+patches:
+  - target:
+      kind: LLMInferenceService
+      name: vcr-smollm2
+    patch: |-
+      # spoke-b simulates a slower, more loaded site than spoke-a. The test ops
+      # make the build fail if the env order in deployment.yaml ever changes.
+      - op: test
+        path: /spec/template/containers/0/name
+        value: main
+      - op: test
+        path: /spec/template/containers/0/env/9/name
+        value: MOCK_ITL_MS
+      - op: replace
+        path: /spec/template/containers/0/env/9/value
+        value: "40"
+      - op: test
+        path: /spec/template/containers/0/env/11/name
+        value: MOCK_TIME_FACTOR_UNDER_LOAD
+      - op: replace
+        path: /spec/template/containers/0/env/11/value
+        value: "3.0"

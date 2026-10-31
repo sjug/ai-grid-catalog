@@ -1,0 +1,134 @@
+# Simulated inference: the real vLLM Rust frontend (vllm-rs) with vllm-vcr's
+# mock engine core. OpenAI API and vllm:* metrics are real; tokens are
+# synthetic. No weights, no GPU. Image pinned by digest (vllm-vcr 0.2.3).
+#
+# Qualified against the RHOAI 3.6 CPU preset as rendered on cloud69
+# (2026-10-31, hub sample facebook-opt-125m Ready):
+#   - the controller renders its own launcher that runs `vllm serve`, which the
+#     vcr image does not ship, so the container command is overridden with the
+#     image's entrypoint (two processes: vllm-rs frontend + vllm-vcr engine);
+#   - the workload must serve HTTPS on 8000: startup/liveness/readiness probes are
+#     httpGet /health scheme HTTPS, the scheduler scrapes /metrics over https and
+#     the gateway dials TLS; KServe mounts the per-model certificate Secret at
+#     /var/run/kserve/tls, so vllm-rs gets --ssl-certfile/--ssl-keyfile from it;
+#   - the storage-initializer downloads model.uri (hf://) to /mnt/models; the
+#     frontend reads the tokenizer and config from there (no second download);
+#   - the override forgoes KServe's certificate-reload parity (vllm-rs has no
+#     ssl refresh); the pod restarts on certificate rotation instead, which the
+#     lab accepts for a mock engine;
+#   - /tmp, /home and /models are writable emptyDirs; the pod runs as a random
+#     non-root UID, which the image tolerates.
+apiVersion: serving.kserve.io/v1alpha2
+kind: LLMInferenceService
+metadata:
+  name: vcr-smollm2
+  namespace: ai-grid-internal-models
+  annotations:
+    openshift.io/display-name: vcr-smollm2
+  labels:
+    ai-grid/model: vcr-smollm2
+spec:
+  baseRefs:
+    - name: v3-6-0-kserve-config-llm-template-cpu
+  model:
+    # The storage-initializer downloads the whole repository snapshot (about
+    # 270 MB including the safetensors weights, which the mock engine never
+    # reads); the frontend needs tokenizer.json, tokenizer_config.json (chat
+    # template) and config.json from it.
+    uri: hf://HuggingFaceTB/SmolLM2-135M-Instruct
+    name: vcr-smollm2
+  replicas: 2
+  router:
+    scheduler:
+      template:
+        containers:
+          - name: main
+            args:
+              - --metrics-cert-dir=/var/run/kserve/tls
+    route: {}
+    gateway:
+      refs:
+        - name: openshift-ai-inference
+          namespace: openshift-ingress
+  template:
+    containers:
+      - name: main
+        image: ghcr.io/neuralmagic/vllm-vcr@sha256:d3f44b85bd469aaf552e81161865efb3c78cceb527cef75635bbc7fb739dcd01
+        command: ["/usr/local/bin/entrypoint.sh"]
+        args: []
+        env:
+          # Tokenizer from the storage-initializer's download; weights are never read.
+          - name: MODEL
+            value: /mnt/models
+          - name: SERVED_MODEL_NAME
+            value: vcr-smollm2
+          # Serve TLS with the KServe-issued certificate so the preset's HTTPS
+          # probes, the scheduler's https metrics scrape and the gateway work.
+          - name: VLLM_EXTRA_ARGS
+            value: --ssl-certfile /var/run/kserve/tls/tls.crt --ssl-keyfile /var/run/kserve/tls/tls.key
+          - name: MOCK_PD_ROLE
+            value: both
+          - name: POD_NAME
+            valueFrom: { fieldRef: { fieldPath: metadata.name } }
+          - name: POD_IP
+            valueFrom: { fieldRef: { fieldPath: status.podIP } }
+          - name: HF_HOME
+            value: /tmp/hf
+          # Latency model; per-cluster overrides live in catalog/clusters/<cluster>/
+          # (JSON patches with test ops on these names and positions).
+          - name: MOCK_PREFILL_OVERHEAD_MS
+            value: "30"
+          - name: MOCK_PREFILL_TIME_PER_TOKEN_MS
+            value: "1"
+          - name: MOCK_ITL_MS
+            value: "8"
+          - name: MOCK_ITL_STDDEV_MS
+            value: "2"
+          - name: MOCK_TIME_FACTOR_UNDER_LOAD
+            value: "1.5"
+          - name: MOCK_MAX_NUM_SEQS
+            value: "16"
+        ports:
+          - name: http
+            containerPort: 8000
+            protocol: TCP
+          - name: control
+            containerPort: 8001
+            protocol: TCP
+        resources:
+          requests:
+            cpu: "1"
+            memory: 2Gi
+          limits:
+            memory: 4Gi
+---
+# Same shape as the lab's catalog entries, plus 8001 (vllm-vcr control API) from
+# the grid namespace and from the node host network (oc port-forward / debug).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: vcr-smollm2-grid
+  namespace: ai-grid-internal-models
+  labels:
+    ai-grid/model: vcr-smollm2
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: vcr-smollm2
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: redhat-ai-grid
+      ports:
+        - { port: 8000, protocol: TCP }
+        - { port: 9090, protocol: TCP }
+        - { port: 8001, protocol: TCP }
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              policy-group.network.openshift.io/host-network: ""
+      ports:
+        - { port: 8001, protocol: TCP }
