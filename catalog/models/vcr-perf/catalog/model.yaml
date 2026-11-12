@@ -1,0 +1,30 @@
+apiVersion: inference.opendatahub.io/v1alpha1
+kind: ExternalModel
+metadata:
+  name: vcr-perf
+  namespace: models-as-a-service
+  labels:
+    ai-grid/model: vcr-perf
+spec:
+  externalProviderRefs:
+    - apiFormat: openai-chat
+      path: /v1/chat/completions
+      ref:
+        name: grid-provider
+      # Must match the LLMInferenceService spec.model.name
+      targetModel: vcr-perf
+      weight: 1
+---
+apiVersion: maas.opendatahub.io/v1alpha1
+kind: MaaSModelRef
+metadata:
+  name: vcr-perf
+  namespace: models-as-a-service
+  annotations:
+    openshift.io/display-name: vcr-perf
+  labels:
+    ai-grid/model: vcr-perf
+spec:
+  modelRef:
+    kind: ExternalModel
+    name: vcr-perf

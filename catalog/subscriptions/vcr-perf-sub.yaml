@@ -1,0 +1,52 @@
+# The performance campaign's subscription for alice's organization (42c3e46f…).
+# The budget covers the campaign's largest cell twice over (800 requests per
+# second of 1280 tokens for a minute is about 61 million), intended so that the
+# token limit is not reached inside a load cell; the quota regression uses
+# vcr-smollm2-sub.
+apiVersion: maas.opendatahub.io/v1alpha1
+kind: MaaSSubscription
+metadata:
+  name: vcr-perf-sub
+  namespace: models-as-a-service
+  annotations:
+    openshift.io/display-name: vcr-perf-sub
+spec:
+  organization:
+    id: 42c3e46f-2477-44d7-a85b-d3b43f6b31fa
+  modelRefs:
+    - name: vcr-perf
+      namespace: models-as-a-service
+      tokenRateLimits:
+        - limit: 200000000
+          window: 1m
+    - name: vcr-churn
+      namespace: models-as-a-service
+      tokenRateLimits:
+        - limit: 200000000
+          window: 1m
+  owner:
+    groups:
+      - name: 42c3e46f-2477-44d7-a85b-d3b43f6b31fa/ai-grid-users
+    users: []
+  priority: 0
+---
+apiVersion: maas.opendatahub.io/v1alpha1
+kind: MaaSAuthPolicy
+metadata:
+  name: vcr-perf-sub-policy
+  namespace: models-as-a-service
+  annotations:
+    openshift.io/display-name: vcr-perf-sub
+  labels:
+    ai-grid/subscription: vcr-perf-sub
+spec:
+  modelRefs:
+    - name: vcr-perf
+      namespace: models-as-a-service
+    - name: vcr-churn
+      namespace: models-as-a-service
+  subjects:
+    groups:
+      - name: 42c3e46f-2477-44d7-a85b-d3b43f6b31fa/ai-grid-admins
+      - name: 42c3e46f-2477-44d7-a85b-d3b43f6b31fa/ai-grid-users
+    users: []
