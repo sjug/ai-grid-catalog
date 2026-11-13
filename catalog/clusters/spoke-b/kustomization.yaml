@@ -3,6 +3,8 @@ kind: Kustomization
 resources:
   - ../../models/vcr-smollm2/deployment
   - ../../models/vcr-perf/deployment
+  - ../../models/vcr-place-ab/deployment
+  - ../../models/vcr-place-hb/deployment
 patches:
   - target:
       kind: LLMInferenceService

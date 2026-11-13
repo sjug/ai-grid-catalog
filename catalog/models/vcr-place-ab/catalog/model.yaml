@@ -1,0 +1,30 @@
+apiVersion: inference.opendatahub.io/v1alpha1
+kind: ExternalModel
+metadata:
+  name: vcr-place-ab
+  namespace: models-as-a-service
+  labels:
+    ai-grid/model: vcr-place-ab
+spec:
+  externalProviderRefs:
+    - apiFormat: openai-chat
+      path: /v1/chat/completions
+      ref:
+        name: grid-provider
+      # Must match the LLMInferenceService spec.model.name
+      targetModel: vcr-place-ab
+      weight: 1
+---
+apiVersion: maas.opendatahub.io/v1alpha1
+kind: MaaSModelRef
+metadata:
+  name: vcr-place-ab
+  namespace: models-as-a-service
+  annotations:
+    openshift.io/display-name: vcr-place-ab
+  labels:
+    ai-grid/model: vcr-place-ab
+spec:
+  modelRef:
+    kind: ExternalModel
+    name: vcr-place-ab

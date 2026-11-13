@@ -1,0 +1,124 @@
+# Performance campaign placement model: vcr-perf's engine and shape, served on
+# spoke-a only (remote from every entry). Not used by the canaries.
+apiVersion: serving.kserve.io/v1alpha2
+kind: LLMInferenceService
+metadata:
+  name: vcr-place-a
+  namespace: ai-grid-internal-models
+  annotations:
+    openshift.io/display-name: vcr-place-a
+  labels:
+    ai-grid/model: vcr-place-a
+spec:
+  baseRefs:
+    - name: v3-6-0-kserve-config-llm-template-cpu
+  model:
+    # The storage-initializer downloads the whole repository snapshot (about
+    # 270 MB including the safetensors weights, which the mock engine never
+    # reads); the frontend needs tokenizer.json, tokenizer_config.json (chat
+    # template) and config.json from it.
+    uri: hf://HuggingFaceTB/SmolLM2-135M-Instruct
+    name: vcr-place-a
+  replicas: 4
+  router:
+    scheduler:
+      template:
+        containers:
+          - name: main
+            args:
+              - --metrics-cert-dir=/var/run/kserve/tls
+    route: {}
+    gateway:
+      refs:
+        - name: openshift-ai-inference
+          namespace: openshift-ingress
+  template:
+    containers:
+      - name: main
+        image: ghcr.io/neuralmagic/vllm-vcr@sha256:d3f44b85bd469aaf552e81161865efb3c78cceb527cef75635bbc7fb739dcd01
+        # The vLLM Rust frontend keeps the default open-file soft limit (1024) and fails
+        # accept and liveness under load; raise it to 65536 (hard limit 524288).
+        command: ["/bin/sh", "-c", "ulimit -Sn 65536 && exec /usr/local/bin/entrypoint.sh"]
+        args: []
+        env:
+          # Tokenizer from the storage-initializer's download; weights are never read.
+          - name: MODEL
+            value: /mnt/models
+          - name: SERVED_MODEL_NAME
+            value: vcr-place-a
+          # Serve TLS with the KServe-issued certificate so the preset's HTTPS
+          # probes, the scheduler's https metrics scrape and the gateway work.
+          - name: VLLM_EXTRA_ARGS
+            value: --ssl-certfile /var/run/kserve/tls/tls.crt --ssl-keyfile /var/run/kserve/tls/tls.key
+          - name: MOCK_PD_ROLE
+            value: both
+          - name: POD_NAME
+            valueFrom: { fieldRef: { fieldPath: metadata.name } }
+          - name: POD_IP
+            valueFrom: { fieldRef: { fieldPath: status.podIP } }
+          - name: HF_HOME
+            value: /tmp/hf
+          # Latency model; per-cluster overrides live in catalog/clusters/<cluster>/
+          # (JSON patches with test ops on these names and positions).
+          - name: MOCK_PREFILL_OVERHEAD_MS
+            value: "20"
+          - name: MOCK_PREFILL_TIME_PER_TOKEN_MS
+            value: "0"
+          - name: MOCK_ITL_MS
+            value: "2"
+          - name: MOCK_ITL_STDDEV_MS
+            value: "0"
+          - name: MOCK_TIME_FACTOR_UNDER_LOAD
+            value: "1.0"
+          - name: MOCK_MAX_NUM_SEQS
+            value: "256"
+          # Startup sizing (not patchable live): a KV cache of 262144 blocks of 16 tokens holds
+          # about 4.2 million tokens per engine, for thousands of long streams per site.
+          - name: MOCK_KV_CACHE_SIZE
+            value: "262144"
+          - name: MOCK_MAX_NUM_BATCHED_TOKENS
+            value: "65536"
+        ports:
+          - name: http
+            containerPort: 8000
+            protocol: TCP
+          - name: control
+            containerPort: 8001
+            protocol: TCP
+        resources:
+          requests:
+            cpu: "1"
+            memory: 2Gi
+          limits:
+            memory: 4Gi
+---
+# Same shape as the lab's catalog entries, plus 8001 (vllm-vcr control API) from
+# the grid namespace and from the node host network (oc port-forward / debug).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: vcr-place-a-grid
+  namespace: ai-grid-internal-models
+  labels:
+    ai-grid/model: vcr-place-a
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: vcr-place-a
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: redhat-ai-grid
+      ports:
+        - { port: 8000, protocol: TCP }
+        - { port: 9090, protocol: TCP }
+        - { port: 8001, protocol: TCP }
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              policy-group.network.openshift.io/host-network: ""
+      ports:
+        - { port: 8001, protocol: TCP }

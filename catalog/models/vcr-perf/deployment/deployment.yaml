@@ -24,8 +24,9 @@ spec:
     # template) and config.json from it.
     uri: hf://HuggingFaceTB/SmolLM2-135M-Instruct
     name: vcr-perf
-  # Four engines per site keep the engine tier above the gateways under test.
-  replicas: 4
+  # Ten engines per site: the simulated engine is bound to about one core, and the
+  # 16,384-stream steps need about 30 engines.
+  replicas: 10
   router:
     scheduler:
       template:

@@ -2,7 +2,7 @@
 # The vcr-perf budget covers the sweep's largest cells (1000 requests per second
 # of long requests is about 550 million tokens a minute) with headroom, so the
 # token limit is not reached inside a load cell: 1 billion per 30 s, the
-# schema's per-window maximum. The quota regression uses vcr-smollm2-sub.
+# schema's per-window maximum; the same for the four placement models. The quota regression uses vcr-smollm2-sub.
 apiVersion: maas.opendatahub.io/v1alpha1
 kind: MaaSSubscription
 metadata:
@@ -15,6 +15,26 @@ spec:
     id: 42c3e46f-2477-44d7-a85b-d3b43f6b31fa
   modelRefs:
     - name: vcr-perf
+      namespace: models-as-a-service
+      tokenRateLimits:
+        - limit: 1000000000
+          window: 30s
+    - name: vcr-place-a
+      namespace: models-as-a-service
+      tokenRateLimits:
+        - limit: 1000000000
+          window: 30s
+    - name: vcr-place-h
+      namespace: models-as-a-service
+      tokenRateLimits:
+        - limit: 1000000000
+          window: 30s
+    - name: vcr-place-hb
+      namespace: models-as-a-service
+      tokenRateLimits:
+        - limit: 1000000000
+          window: 30s
+    - name: vcr-place-ab
       namespace: models-as-a-service
       tokenRateLimits:
         - limit: 1000000000
@@ -42,6 +62,14 @@ metadata:
 spec:
   modelRefs:
     - name: vcr-perf
+      namespace: models-as-a-service
+    - name: vcr-place-a
+      namespace: models-as-a-service
+    - name: vcr-place-h
+      namespace: models-as-a-service
+    - name: vcr-place-hb
+      namespace: models-as-a-service
+    - name: vcr-place-ab
       namespace: models-as-a-service
     - name: vcr-churn
       namespace: models-as-a-service
