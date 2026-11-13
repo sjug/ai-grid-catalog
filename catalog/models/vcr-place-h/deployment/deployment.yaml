@@ -72,10 +72,10 @@ spec:
             value: "1.0"
           - name: MOCK_MAX_NUM_SEQS
             value: "256"
-          # Startup sizing (not patchable live): a KV cache of 262144 blocks of 16 tokens holds
-          # about 4.2 million tokens per engine, for thousands of long streams per site.
+          # Startup sizing (not patchable live): 4096 blocks of 16 tokens, synthetic sizing so the grid's KV
+          # signals activate. The simulator counts prompt blocks only and keeps admitting when full: no real saturation.
           - name: MOCK_KV_CACHE_SIZE
-            value: "262144"
+            value: "4096"
           - name: MOCK_MAX_NUM_BATCHED_TOKENS
             value: "65536"
         ports:
