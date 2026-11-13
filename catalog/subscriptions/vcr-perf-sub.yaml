@@ -1,8 +1,8 @@
 # The performance campaign's subscription for alice's organization (42c3e46f…).
-# The budget covers the campaign's largest cell twice over (800 requests per
-# second of 1280 tokens for a minute is about 61 million), intended so that the
-# token limit is not reached inside a load cell; the quota regression uses
-# vcr-smollm2-sub.
+# The vcr-perf budget covers the sweep's largest cells (1000 requests per second
+# of long requests is about 550 million tokens a minute) with headroom, so the
+# token limit is not reached inside a load cell: 1 billion per 30 s, the
+# schema's per-window maximum. The quota regression uses vcr-smollm2-sub.
 apiVersion: maas.opendatahub.io/v1alpha1
 kind: MaaSSubscription
 metadata:
@@ -17,8 +17,8 @@ spec:
     - name: vcr-perf
       namespace: models-as-a-service
       tokenRateLimits:
-        - limit: 200000000
-          window: 1m
+        - limit: 1000000000
+          window: 30s
     - name: vcr-churn
       namespace: models-as-a-service
       tokenRateLimits:
